@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CoTeach</title>
+  <link rel="icon" href="/brand/favicon.png" type="image/png" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.511.0/dist/umd/lucide.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div class="hero-media" aria-hidden="true">
+        <img src="/brand/hero_v1.jpg" alt="" />
+      </div>
+      <div class="hero-content">
+        <div class="brand">
+          <div class="brand-text">
+            <h1 class="sr-only">CoTeach</h1>
+            <div class="logo-crop"><img class="logo" src="/brand/logo.jpg" alt="CoTeach" /></div>
+            <p class="tagline" data-i18n="tagline"></p>
+          </div>
+        </div>
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-set-lang="kk">Қаз</button>
+          <button type="button" data-set-lang="ru">Рус</button>
+          <button type="button" data-set-lang="en">Eng</button>
+        </div>
+      </div>
+    </header>
+
+    <div id="demo-banner" class="banner hidden" role="status"></div>
+
+    <nav class="tabs" role="tablist">
+      <button type="button" id="tab-analyze" class="tab is-active" data-view="analyze" role="tab"></button>
+      <button type="button" id="tab-progress" class="tab" data-view="progress" role="tab"></button>
+    </nav>
+
+    <main>
+      <section id="view-analyze" class="view">
+        <form id="analyze-form" class="card form-card">
+          <div class="grid">
+            <label>
+              <span data-i18n="teacherName"></span>
+              <input id="teacher-name" name="teacher_name" type="text" required maxlength="200" autocomplete="name" />
+            </label>
+            <label>
+              <span data-i18n="subject"></span>
+              <input id="subject" name="subject" type="text" required maxlength="200" />
+            </label>
+            <label>
+              <span data-i18n="grade"></span>
+              <select id="grade" name="grade" required></select>
+            </label>
+            <label>
+              <span data-i18n="materialType"></span>
+              <select id="material-type" name="material_type" required>
+                <option value="lesson_plan"></option>
+                <option value="presentation_text"></option>
+                <option value="transcript"></option>
+                <option value="student_work"></option>
+              </select>
+            </label>
+          </div>
+          <label class="block">
+            <span data-i18n="materialText"></span>
+            <textarea id="material-text" name="text" rows="14" spellcheck="true"></textarea>
+          </label>
+          <label class="block file-label">
+            <span data-i18n="upload"></span>
+            <input id="material-file" name="file" type="file" accept=".txt,.md,.docx,.pdf,text/plain" />
+          </label>
+          <div class="form-actions">
+            <button type="submit" id="submit-btn" class="btn primary"></button>
+            <p id="form-error" class="error hidden"></p>
+          </div>
+        </form>
+
+        <div id="status" class="status hidden"></div>
+        <div id="feedback" class="feedback hidden"></div>
+      </section>
+
+      <section id="view-progress" class="view hidden">
+        <form id="progress-form" class="card form-card inline">
+          <label>
+            <span data-i18n="teacherName"></span>
+            <input id="progress-name" type="text" required maxlength="200" />
+          </label>
+          <button type="submit" class="btn primary" id="progress-btn"></button>
+        </form>
+        <p id="progress-error" class="error hidden"></p>
+        <div id="progress-empty" class="card muted hidden"></div>
+        <div id="progress-panel" class="hidden">
+          <div class="card">
+            <h2 class="card-heading"><i data-lucide="chart-line"></i> <span data-i18n="scoreTrend"></span></h2>
+            <canvas id="score-chart" height="120"></canvas>
+          </div>
+          <div id="history-list" class="history"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p data-i18n="footer"></p>
+    </footer>
+  </div>
+</body>
+</html>
