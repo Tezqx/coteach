@@ -1,9 +1,11 @@
+"""Extract plain text from uploaded .txt, .docx, and .pdf files."""
+
 from __future__ import annotations
 
 import io
 from pathlib import Path
 
-MAX_UPLOAD_BYTES = 2 * 1024 * 1024
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 ALLOWED_SUFFIXES = {".txt", ".md", ".docx", ".pdf"}
 
 
@@ -13,12 +15,13 @@ class ExtractionError(ValueError):
 
 def extract_text(filename: str, data: bytes, content_type: str | None = None) -> str:
     if len(data) > MAX_UPLOAD_BYTES:
-        raise ExtractionError("File is larger than the 2 MB upload limit.")
+        raise ExtractionError("File is larger than the 20 MB upload limit.")
     if not data:
         raise ExtractionError("The uploaded file is empty.")
 
     suffix = Path(filename or "").suffix.lower()
     if suffix not in ALLOWED_SUFFIXES:
+        # Allow typeless or text/* uploads as plain text.
         if content_type and content_type.startswith("text/"):
             suffix = ".txt"
         else:
