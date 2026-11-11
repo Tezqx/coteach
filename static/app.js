@@ -1,3 +1,5 @@
+/* CoTeach frontend — analyze, feedback cards, and progress. */
+
 const I18N = {
   en: {
     tagline: "AI professional growth coach for teachers in Kazakhstan",
@@ -36,6 +38,7 @@ const I18N = {
     evidence: "Evidence",
     footer: "CoTeach — a structured alternative to CritiSabaq. Feedback is coaching support, not an official evaluation.",
     errorGeneric: "Something went wrong. Please try again.",
+    fileTooLarge: "This file is larger than 20 MB. Please upload a smaller file or paste the text.",
     priority: { high: "High", medium: "Medium", low: "Low" },
     meta: (d) => `${d.subject}, grade ${d.grade} · ${d.materialType} · ${d.when}`,
   },
@@ -76,6 +79,7 @@ const I18N = {
     evidence: "Свидетельство",
     footer: "CoTeach — структурированная альтернатива CritiSabaq. Это поддержка коуча, а не официальная оценка.",
     errorGeneric: "Что-то пошло не так. Попробуйте ещё раз.",
+    fileTooLarge: "Файл больше 20 МБ. Загрузите файл поменьше или вставьте текст.",
     priority: { high: "Высокий", medium: "Средний", low: "Низкий" },
     meta: (d) => `${d.subject}, ${d.grade} класс · ${d.materialType} · ${d.when}`,
   },
@@ -116,6 +120,7 @@ const I18N = {
     evidence: "Дәлел",
     footer: "CoTeach — CritiSabaq-қа балама құрылымды кері байланыс. Бұл ресми бағалау емес, коуч қолдауы.",
     errorGeneric: "Қате шықты. Қайта көріңіз.",
+    fileTooLarge: "Файл 20 МБ-тан үлкен. Кішірек файл жүктеңіз немесе мәтінді қойыңыз.",
     priority: { high: "Жоғары", medium: "Орташа", low: "Төмен" },
     meta: (d) => `${d.subject}, ${d.grade}-сынып · ${d.materialType} · ${d.when}`,
   },
@@ -333,6 +338,12 @@ async function analyze(event) {
   form.append("material_type", $("material-type").value);
   form.append("text", $("material-text").value);
   const file = $("material-file").files[0];
+  if (file && file.size > 20 * 1024 * 1024) {
+    showError($("form-error"), i.fileTooLarge);
+    $("status").classList.add("hidden");
+    $("submit-btn").disabled = false;
+    return;
+  }
   if (file) form.append("file", file);
 
   try {
