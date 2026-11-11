@@ -1,10 +1,12 @@
+"""LLM coaching layer: Gemini (default) or OpenAI, plus deterministic mock mode."""
+
 from __future__ import annotations
 
 import json
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -12,11 +14,15 @@ from pydantic import ValidationError
 
 from .schemas import CRITERION_IDS, CRITERION_LABELS, RUBRIC_CRITERIA, Feedback
 
+T = TypeVar("T")
+
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 MAX_MATERIAL_CHARS = 24000
+# gemini-2.5-flash is retired for new AI Studio keys (404). gemini-3.5-flash
+# is a current Flash model that works with the OpenAI-compatible endpoint.
 DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
 
 LANGUAGE_NAMES = {"kk": "Kazakh", "ru": "Russian", "en": "English"}
@@ -82,9 +88,15 @@ def analyze_material(
         text=text,
         history=history,
     )
+    feedback = complete_validated(messages, _parse_feedback)
+    return localize_labels(feedback, language)
+
+
+def complete_validated(messages: list[dict[str, str]], parse: Callable[[str], T]) -> T:
+    """Call the LLM in JSON mode, parse/validate, and ask once for a repair on failure."""
     raw = _complete(messages, use_json_format=True)
     try:
-        feedback = _parse_feedback(raw)
+        return parse(raw)
     except (ValueError, ValidationError) as first_error:
         repair = messages + [
             {"role": "assistant", "content": raw[:8000]},
@@ -92,17 +104,16 @@ def analyze_material(
                 "role": "user",
                 "content": (
                     "Your previous reply was not valid JSON matching the required schema. "
-                    f"Error: {first_error}\n"
+                    f"Error: {str(first_error)[:1500]}\n"
                     "Return ONLY a single valid JSON object. No markdown, no commentary."
                 ),
             },
         ]
         raw = _complete(repair, use_json_format=True)
-        feedback = _parse_feedback(raw)
-    return localize_labels(feedback, language)
+        return parse(raw)
 
 
-def localize_labels(feedback: Feedback, language: str) -> Feedback:
+def localize_labels(feedback, language: str):
     lang = language if language in {"kk", "ru", "en"} else "en"
     for item in feedback.rubric:
         item.label = CRITERION_LABELS[item.id][lang]
@@ -120,7 +131,7 @@ def _complete(messages: list[dict[str, str]], use_json_format: bool) -> str:
     if use_json_format:
         kwargs["response_format"] = {"type": "json_object"}
     last_error: Exception | None = None
-    for attempt in range(3):
+    for attempt in range(4):
         try:
             response = client.chat.completions.create(**kwargs)
             last_error = None
@@ -129,7 +140,7 @@ def _complete(messages: list[dict[str, str]], use_json_format: bool) -> str:
             last_error = exc
             if use_json_format and _is_format_unsupported(exc):
                 return _complete(messages, use_json_format=False)
-            if _is_transient(exc) and attempt < 2:
+            if _is_transient(exc) and attempt < 3:
                 import time as _time
                 _time.sleep(2 * (attempt + 1))
                 continue
@@ -146,6 +157,7 @@ def _complete(messages: list[dict[str, str]], use_json_format: bool) -> str:
 
 
 def _friendly_llm_error(exc: Exception) -> str:
+    """Surface a safe, key-free message from a provider error."""
     status = getattr(exc, "status_code", None)
     body = ""
     response = getattr(exc, "response", None)
@@ -155,11 +167,18 @@ def _friendly_llm_error(exc: Exception) -> str:
         except Exception:
             body = ""
     message = body or str(exc)
+    if _is_html_error(exc):
+        message = "The language model service returned a temporary error page. Please try again in a minute."
+    # Never include credentials if a library leaked them.
     import re as _re
     message = _re.sub(r"AIza[0-9A-Za-z_-]{8,}", "[REDACTED]", message)
     message = _re.sub(r"(key=)[^&\s]+", r"\1[REDACTED]", message, flags=_re.I)
+    # Prefer the provider's JSON error message when present.
     try:
-        parsed = json.loads(message[message.find("{"):] if "{" in message else message)
+        try:
+            parsed = json.loads(message)
+        except json.JSONDecodeError:
+            parsed = json.loads(message[message.find("{"):] if "{" in message else message)
         if isinstance(parsed, list) and parsed:
             parsed = parsed[0]
         if isinstance(parsed, dict):
@@ -168,13 +187,41 @@ def _friendly_llm_error(exc: Exception) -> str:
                 message = str(err["message"])
     except Exception:
         pass
+    if _is_daily_quota(exc):
+        message = (
+            "The free Gemini API daily request limit has been reached. "
+            "It resets automatically within 24 hours. " + message.split("\n")[0]
+        )
     prefix = f"HTTP {status}: " if status else ""
     return (prefix + message).strip()[:800]
 
 
+def _is_daily_quota(exc: Exception) -> bool:
+    text = (_response_text(exc) or str(exc)).lower()
+    return getattr(exc, "status_code", None) == 429 and ("per day" in text or "perday" in text)
+
+
+def _response_text(exc: Exception) -> str:
+    response = getattr(exc, "response", None)
+    try:
+        return (response.text or "") if response is not None else ""
+    except Exception:
+        return ""
+
+
+def _is_html_error(exc: Exception) -> bool:
+    body = _response_text(exc).lstrip().lower()
+    return body.startswith("<!doctype html") or body.startswith("<html")
+
+
 def _is_transient(exc: Exception) -> bool:
     status = getattr(exc, "status_code", None)
-    if status in {429, 503}:
+    if _is_daily_quota(exc):
+        return False  # retrying cannot help until the quota resets
+    if status in {429, 500, 502, 503, 504}:
+        return True
+    # Google's edge occasionally answers with an HTML 403 page; a retry succeeds.
+    if status == 403 and _is_html_error(exc):
         return True
     msg = str(exc).lower()
     return "high demand" in msg or "unavailable" in msg or "try again later" in msg or "429" in msg
@@ -310,6 +357,7 @@ def _format_history(history: list[dict[str, Any]]) -> str:
             "In progress_note, welcome the teacher and describe the starting point. "
             "Do not invent prior results."
         )
+    # history is most recent first; present chronological for the model.
     blocks: list[str] = []
     for row in reversed(history):
         try:

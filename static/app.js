@@ -10,7 +10,7 @@ const I18N = {
     grade: "Grade",
     materialType: "Material type",
     materialText: "Paste a lesson plan, presentation text, transcript, or student work",
-    upload: "Or upload a file (.txt, .docx, .pdf)",
+    upload: "Or upload a file (.txt, .docx, .pdf, .pptx)",
     submit: "Get coaching feedback",
     analyzing: "Analyzing your material…",
     demoBanner: "Demo mode — no API key configured. Showing sample feedback so you can try every screen.",
@@ -51,7 +51,7 @@ const I18N = {
     grade: "Класс",
     materialType: "Тип материала",
     materialText: "Вставьте план урока, текст презентации, транскрипт или работу ученика",
-    upload: "Или загрузите файл (.txt, .docx, .pdf)",
+    upload: "Или загрузите файл (.txt, .docx, .pdf, .pptx)",
     submit: "Получить обратную связь",
     analyzing: "Анализируем материал…",
     demoBanner: "Демо-режим — ключ API не задан. Показана примерная обратная связь, чтобы можно было пройти все экраны.",
@@ -92,7 +92,7 @@ const I18N = {
     grade: "Сынып",
     materialType: "Материал түрі",
     materialText: "Сабақ жоспарын, презентация мәтінін, транскрипті немесе оқушы жұмысын қойыңыз",
-    upload: "Немесе файл жүктеңіз (.txt, .docx, .pdf)",
+    upload: "Немесе файл жүктеңіз (.txt, .docx, .pdf, .pptx)",
     submit: "Кері байланыс алу",
     analyzing: "Материал талданып жатыр…",
     demoBanner: "Демо-режим — API кілті берілмеген. Барлық экранды көру үшін үлгілік кері байланыс көрсетіледі.",
@@ -197,14 +197,16 @@ function applyLanguage() {
   });
 
   if (state.lastResult) renderFeedback(state.lastResult);
+  if (typeof applyProgramLanguage === "function") applyProgramLanguage();
   refreshIcons();
 }
 
 function setView(name) {
-  $("view-analyze").classList.toggle("hidden", name !== "analyze");
-  $("view-progress").classList.toggle("hidden", name !== "progress");
-  $("tab-analyze").classList.toggle("is-active", name === "analyze");
-  $("tab-progress").classList.toggle("is-active", name === "progress");
+  ["analyze", "progress", "program"].forEach((view) => {
+    $(`view-${view}`).classList.toggle("hidden", name !== view);
+    $(`tab-${view}`).classList.toggle("is-active", name === view);
+  });
+  localStorage.setItem("coteach.view", name);
 }
 
 function showError(el, message) {
@@ -481,6 +483,7 @@ function init() {
   $("teacher-name").value = savedName;
   $("progress-name").value = savedName;
   if (!I18N[state.lang]) state.lang = "en";
+  initProgram();
   applyLanguage();
   loadConfig();
 
@@ -496,8 +499,16 @@ function init() {
     setView("progress");
     if ($("progress-name").value.trim()) loadProgress();
   });
+  $("tab-program").addEventListener("click", () => {
+    setView("program");
+    enterProgramView();
+  });
   $("analyze-form").addEventListener("submit", analyze);
   $("progress-form").addEventListener("submit", loadProgress);
+  if (localStorage.getItem("coteach.view") === "program") {
+    setView("program");
+    enterProgramView();
+  }
 }
 
 init();

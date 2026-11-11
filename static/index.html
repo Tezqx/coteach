@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.511.0/dist/umd/lucide.min.js" defer></script>
+  <script src="/static/program.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body>
@@ -37,6 +38,7 @@
     <nav class="tabs" role="tablist">
       <button type="button" id="tab-analyze" class="tab is-active" data-view="analyze" role="tab"></button>
       <button type="button" id="tab-progress" class="tab" data-view="progress" role="tab"></button>
+      <button type="button" id="tab-program" class="tab" data-view="program" role="tab"></button>
     </nav>
 
     <main>
@@ -71,7 +73,7 @@
           </label>
           <label class="block file-label">
             <span data-i18n="upload"></span>
-            <input id="material-file" name="file" type="file" accept=".txt,.md,.docx,.pdf,text/plain" />
+            <input id="material-file" name="file" type="file" accept=".txt,.md,.docx,.pdf,.pptx,text/plain" />
           </label>
           <div class="form-actions">
             <button type="submit" id="submit-btn" class="btn primary"></button>
@@ -100,6 +102,63 @@
           </div>
           <div id="history-list" class="history"></div>
         </div>
+      </section>
+
+      <section id="view-program" class="view hidden">
+        <div id="program-home">
+          <div class="card program-intro">
+            <div class="accent-bar"></div>
+            <h2 class="card-heading"><i data-lucide="sprout" class="icon-gold"></i> <span data-pi18n="tabProgram"></span></h2>
+            <p data-pi18n="progIntro"></p>
+            <div class="form-card inline">
+              <label>
+                <span data-i18n="teacherName"></span>
+                <input id="p-name" type="text" maxlength="200" autocomplete="name" />
+              </label>
+              <button type="button" class="btn ghost" id="program-load-btn" data-pi18n="loadPrograms"></button>
+            </div>
+            <p id="program-error" class="error hidden"></p>
+          </div>
+          <div class="card hidden" id="program-list-card">
+            <h2 class="card-heading"><i data-lucide="folder-open"></i> <span data-pi18n="myPrograms"></span></h2>
+            <div id="program-list" class="program-list"></div>
+          </div>
+          <form id="program-form" class="card form-card">
+            <h2 class="card-heading"><i data-lucide="flag"></i> <span data-pi18n="startTitle"></span></h2>
+            <div class="grid three">
+              <label>
+                <span data-i18n="subject"></span>
+                <input id="p-subject" type="text" required maxlength="200" />
+              </label>
+              <label>
+                <span data-i18n="grade"></span>
+                <select id="p-grade" required></select>
+              </label>
+              <label>
+                <span data-pi18n="weeksLabel"></span>
+                <select id="p-weeks" required></select>
+              </label>
+            </div>
+            <fieldset class="focus-field">
+              <legend data-pi18n="focusLabel"></legend>
+              <div id="focus-options" class="focus-options"></div>
+              <label class="chip-check auto">
+                <input type="checkbox" id="focus-auto" />
+                <span><i data-lucide="wand-sparkles"></i> <span data-pi18n="focusAuto"></span></span>
+              </label>
+            </fieldset>
+            <label class="block">
+              <span data-pi18n="goalLabel"></span>
+              <textarea id="p-goal" rows="3" class="short" maxlength="1500"></textarea>
+            </label>
+            <p class="meta" data-pi18n="langHint"></p>
+            <div class="form-actions">
+              <button type="submit" id="p-start-btn" class="btn primary" data-pi18n="startBtn"></button>
+            </div>
+          </form>
+          <div id="program-status" class="status hidden"></div>
+        </div>
+        <div id="program-dashboard" class="hidden"></div>
       </section>
     </main>
   </div>

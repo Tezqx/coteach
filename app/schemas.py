@@ -1,3 +1,5 @@
+"""Pydantic models for coach feedback and API payloads."""
+
 from __future__ import annotations
 
 from typing import Literal
@@ -52,6 +54,36 @@ CRITERION_IDS = [c["id"] for c in RUBRIC_CRITERIA]
 CRITERION_LABELS = {c["id"]: c for c in RUBRIC_CRITERIA}
 
 
+def order_rubric(items: list["RubricItem"]) -> list["RubricItem"]:
+    """Require each criterion exactly once; return them in canonical order."""
+    got = [item.id for item in items]
+    missing = [cid for cid in CRITERION_IDS if cid not in got]
+    extra = [cid for cid in got if cid not in CRITERION_IDS]
+    if missing or extra or len(set(got)) != 6:
+        raise ValueError(
+            f"Rubric must contain each criterion once. missing={missing} extra={extra}"
+        )
+    # Keep a stable order and fill labels if the model left them blank.
+    by_id = {item.id: item for item in items}
+    ordered: list[RubricItem] = []
+    for cid in CRITERION_IDS:
+        item = by_id[cid]
+        if not item.label.strip():
+            item.label = CRITERION_LABELS[cid]["en"]
+        ordered.append(item)
+    return ordered
+
+
+def clean_criteria(values: list[str] | None, limit: int = 2) -> list[str]:
+    """Keep known, unique criterion ids in the given order, up to `limit`."""
+    out: list[str] = []
+    for value in values or []:
+        cid = str(value).strip()
+        if cid in CRITERION_IDS and cid not in out:
+            out.append(cid)
+    return out[:limit]
+
+
 class RubricItem(BaseModel):
     id: str
     label: str = ""
@@ -98,21 +130,7 @@ class Feedback(BaseModel):
 
     @model_validator(mode="after")
     def all_criteria_present(self) -> "Feedback":
-        got = [item.id for item in self.rubric]
-        missing = [cid for cid in CRITERION_IDS if cid not in got]
-        extra = [cid for cid in got if cid not in CRITERION_IDS]
-        if missing or extra or len(set(got)) != 6:
-            raise ValueError(
-                f"Rubric must contain each criterion once. missing={missing} extra={extra}"
-            )
-        by_id = {item.id: item for item in self.rubric}
-        ordered: list[RubricItem] = []
-        for cid in CRITERION_IDS:
-            item = by_id[cid]
-            if not item.label.strip():
-                item.label = CRITERION_LABELS[cid]["en"]
-            ordered.append(item)
-        self.rubric = ordered
+        self.rubric = order_rubric(self.rubric)
         return self
 
     def scores_dict(self) -> dict[str, int]:
@@ -130,3 +148,127 @@ class AnalyzeRequest(BaseModel):
     grade: str = Field(min_length=1, max_length=40)
     material_type: MaterialType
     text: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Growth Program (multi-week coaching)
+# ---------------------------------------------------------------------------
+
+TaskStatus = Literal["done", "partial", "not_done"]
+
+
+class ProgramWeekPlan(BaseModel):
+    week: int = Field(ge=1, le=8)
+    focus: str
+    task: str
+    evidence: str
+
+
+class ProgramPlan(BaseModel):
+    title: str
+    overview: str
+    focus_criteria: list[str] = Field(min_length=1)
+    weeks: list[ProgramWeekPlan] = Field(min_length=1, max_length=8)
+
+    @field_validator("focus_criteria")
+    @classmethod
+    def known_focus(cls, value: list[str]) -> list[str]:
+        cleaned = clean_criteria(value)
+        if not cleaned:
+            raise ValueError("focus_criteria must contain 1-2 known rubric criterion ids")
+        return cleaned
+
+    @model_validator(mode="after")
+    def renumber(self) -> "ProgramPlan":
+        for idx, week in enumerate(self.weeks, start=1):
+            week.week = idx
+        return self
+
+
+class TaskCheck(BaseModel):
+    status: TaskStatus
+    comment: str
+
+
+class NextTask(BaseModel):
+    focus: str
+    task: str
+    evidence: str
+
+
+def _trim(value: list, limit: int) -> list:
+    return list(value or [])[:limit]
+
+
+class WeekFeedback(BaseModel):
+    summary: str
+    task_check: TaskCheck
+    rubric: list[RubricItem] = Field(min_length=6, max_length=6)
+    strengths: list[Strength] = Field(min_length=1)
+    improvements: list[Improvement] = Field(min_length=1)
+    micro_actions: list[str] = Field(min_length=1)
+    next_task: NextTask | None = None
+    progress_note: str
+
+    @field_validator("strengths", mode="before")
+    @classmethod
+    def cap_strengths(cls, value):
+        return _trim(value, 3)
+
+    @field_validator("improvements", mode="before")
+    @classmethod
+    def cap_improvements(cls, value):
+        return _trim(value, 2)
+
+    @field_validator("micro_actions", mode="before")
+    @classmethod
+    def cap_actions(cls, value):
+        return _trim(value, 2)
+
+    @model_validator(mode="after")
+    def all_criteria_present(self) -> "WeekFeedback":
+        self.rubric = order_rubric(self.rubric)
+        return self
+
+    def scores_dict(self) -> dict[str, int]:
+        return {item.id: item.score for item in self.rubric}
+
+    def average_score(self) -> float:
+        scores = list(self.scores_dict().values())
+        return round(sum(scores) / len(scores), 2)
+
+
+class FocusComparison(BaseModel):
+    id: str
+    label: str = ""
+    before: float | None = None
+    after: float | None = None
+    comment: str = ""
+
+
+class FinalReport(BaseModel):
+    growth_summary: str
+    focus_comparison: list[FocusComparison] = Field(default_factory=list)
+    achievements: list[str] = Field(min_length=1)
+    recommendations: list[str] = Field(min_length=1)
+    next_focus: list[str] = Field(default_factory=list)
+
+    @field_validator("next_focus", mode="before")
+    @classmethod
+    def known_next(cls, value):
+        return clean_criteria(value if isinstance(value, list) else [])
+
+
+class ProgramStartRequest(BaseModel):
+    teacher_name: str = Field(min_length=1, max_length=200)
+    language: LanguageCode
+    subject: str = Field(min_length=1, max_length=200)
+    grade: str = Field(min_length=1, max_length=40)
+    weeks: int = Field(default=4, ge=2, le=8)
+    focus_criteria: list[str] = Field(default_factory=list)
+    goal: str = Field(default="", max_length=1500)
+
+    @field_validator("focus_criteria", mode="before")
+    @classmethod
+    def known_focus(cls, value):
+        return clean_criteria(value if isinstance(value, list) else [])

@@ -1,4 +1,4 @@
-"""Extract plain text from uploaded .txt, .docx, and .pdf files."""
+"""Extract plain text from uploaded .txt, .docx, .pdf, and .pptx files."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import io
 from pathlib import Path
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
-ALLOWED_SUFFIXES = {".txt", ".md", ".docx", ".pdf"}
+ALLOWED_SUFFIXES = {".txt", ".md", ".docx", ".pdf", ".pptx"}
 
 
 class ExtractionError(ValueError):
@@ -26,7 +26,7 @@ def extract_text(filename: str, data: bytes, content_type: str | None = None) ->
             suffix = ".txt"
         else:
             raise ExtractionError(
-                "Unsupported file type. Please upload a .txt, .docx, or .pdf file."
+                "Unsupported file type. Please upload a .txt, .docx, .pdf, or .pptx file."
             )
 
     if suffix in {".txt", ".md"}:
@@ -35,6 +35,8 @@ def extract_text(filename: str, data: bytes, content_type: str | None = None) ->
         return _from_docx(data)
     if suffix == ".pdf":
         return _from_pdf(data)
+    if suffix == ".pptx":
+        return _from_pptx(data)
     raise ExtractionError("Unsupported file type.")
 
 
@@ -97,3 +99,49 @@ def _from_pdf(data: bytes) -> str:
             "No text could be extracted from the PDF. Try a .txt file or paste the text."
         )
     return text
+
+
+def _from_pptx(data: bytes) -> str:
+    try:
+        from pptx import Presentation
+    except ImportError as exc:
+        raise ExtractionError("python-pptx is not installed.") from exc
+    try:
+        deck = Presentation(io.BytesIO(data))
+    except Exception as exc:
+        raise ExtractionError("Could not read the .pptx file.") from exc
+    slides: list[str] = []
+    for number, slide in enumerate(deck.slides, start=1):
+        parts: list[str] = []
+        for shape in slide.shapes:
+            parts.extend(_shape_text(shape))
+        if slide.has_notes_slide:
+            notes = (slide.notes_slide.notes_text_frame.text or "").strip()
+            if notes:
+                parts.append(f"[Notes] {notes}")
+        if parts:
+            slides.append(f"--- Slide {number} ---\n" + "\n".join(parts))
+    text = "\n\n".join(slides).strip()
+    if not text:
+        raise ExtractionError(
+            "No text could be extracted from the presentation. Try pasting the slide text."
+        )
+    return text
+
+
+def _shape_text(shape) -> list[str]:
+    out: list[str] = []
+    if getattr(shape, "shape_type", None) == 6 and hasattr(shape, "shapes"):  # group
+        for child in shape.shapes:
+            out.extend(_shape_text(child))
+        return out
+    if getattr(shape, "has_text_frame", False) and shape.has_text_frame:
+        text = shape.text_frame.text.strip()
+        if text:
+            out.append(text)
+    if getattr(shape, "has_table", False) and shape.has_table:
+        for row in shape.table.rows:
+            cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+            if cells:
+                out.append(" | ".join(cells))
+    return out
